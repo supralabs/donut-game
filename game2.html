@@ -1,0 +1,263 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <script src="https://cdn.jsdelivr.net/npm/phaser@3.60.0/dist/phaser-arcade-physics.min.js"></script>
+    <style>
+        body, html {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            width: 100%;
+            height: 100%;
+        }
+        canvas {
+            display: block;
+        }
+    </style>
+</head>
+<body>
+
+    <script>
+        class Example extends Phaser.Scene
+{
+    constructor ()
+    {
+        super();
+        this.donuts = [];
+        this.bombs = [];
+        this.score = 0;
+        this.isGameOver = false;
+    }
+
+    preload ()
+    {
+        this.load.setBaseURL('https://labs.phaser.io');
+        this.load.image('bg', 'assets/skies/grid.png');
+        this.load.image('donut', 'assets/sprites/donut.png');
+        this.load.spritesheet('bomb', 'assets/sprites/boom32wh12.png', {
+            frameWidth: 32,
+            frameHeight: 32,
+            endFrame: 11
+        });
+        this.load.audio('click', 'assets/audio/click.mp3'); // Load suara klik
+    }
+
+    create ()
+    {
+        // Set up game
+        this.setupGame();
+        
+        // Create objects
+        this.createBackground();
+        this.createDonuts();
+        this.createBombs();
+        this.createAnimations();
+        
+        // Handle window resize
+        window.addEventListener('resize', () => {
+            this.scale.resize(window.innerWidth, window.innerHeight);
+            this.cameras.main.setViewport(0, 0, window.innerWidth, window.innerHeight);
+        });
+    }
+
+    setupGame()
+    {
+        this.cameras.main.setViewport(0, 0, window.innerWidth, window.innerHeight);
+        this.cameras.main.setBounds(0, 0, window.innerWidth, window.innerHeight);
+        
+        // Score text
+        this.scoreText = this.add.text(20, 20, 'Score: 0', { 
+            fontSize: '24px', 
+            fill: '#ffffff',
+            fontFamily: 'Arial',
+            stroke: '#000000',
+            strokeThickness: 4
+        }).setDepth(2);
+    }
+
+    createBackground()
+    {
+        this.add.image(window.innerWidth / 2, window.innerHeight, 'bg')
+            .setOrigin(0.5, 1)
+            .setDisplaySize(window.innerWidth, window.innerHeight);
+    }
+
+    createDonuts()
+    {
+        this.donuts = [];
+        for (let i = 0; i < 16; i++)
+        {
+            const donut = this.add.image(
+                Phaser.Math.Between(0, window.innerWidth),
+                Phaser.Math.Between(200, window.innerHeight),
+                'donut'
+            ).setInteractive();
+            
+            donut.on('pointerdown', () => {
+                if (!this.isGameOver) {
+                    this.handleDonutClick(donut);
+                }
+            });
+            
+            this.donuts.push(donut);
+        }
+    }
+
+    createBombs()
+    {
+        this.bombs = [];
+        for (let i = 0; i < 3; i++)
+        {
+            const bomb = this.add.sprite(
+                Phaser.Math.Between(0, window.innerWidth),
+                Phaser.Math.Between(200, window.innerHeight),
+                'bomb',
+                2
+            ).setScale(5).setInteractive();
+            
+            bomb.on('pointerdown', () => {
+                if (!this.isGameOver) {
+                    this.gameOver(bomb);
+                }
+            });
+            
+            this.bombs.push(bomb);
+        }
+    }
+
+    createAnimations()
+    {
+        this.anims.create({
+            key: 'explode',
+            frames: this.anims.generateFrameNumbers('bomb', {
+                start: 2,
+                end: 11
+            }),
+            frameRate: 10,
+            repeat: 0
+        });
+    }
+    handleDonutClick(donut) {
+    this.score += 10;
+    this.scoreText.setText(`Score: ${this.score}`);
+
+    donut.disableInteractive();
+    
+    this.tweens.add({
+        targets: donut,
+        scale: 0,
+        duration: 200,
+        onComplete: () => {
+            const index = this.donuts.indexOf(donut);
+            if (index !== -1) {
+                donut.destroy();
+                this.donuts.splice(index, 1);
+                
+                // TAMBAHKAN DONAT BARU DI SEBELAH KANAN LAYAR
+                const newDonut = this.add.image(
+                    window.innerWidth + 100, // Spawn di luar layar (kanan)
+                    Phaser.Math.Between(200, window.innerHeight), // Y acak
+                    'donut'
+                ).setInteractive();
+                
+                newDonut.on('pointerdown', () => this.handleDonutClick(newDonut));
+                this.donuts.push(newDonut);
+            }
+        }
+    });
+}
+
+    update ()
+    {
+        if (this.isGameOver) return;
+        
+        // Gerakkan objek
+        Phaser.Actions.IncX([...this.donuts, ...this.bombs], -2, -0.5);
+        
+        // Wrap sekitar layar
+        Phaser.Actions.WrapInRectangle(this.donuts, this.cameras.main.getBounds(), 128);
+        Phaser.Actions.WrapInRectangle(this.bombs, this.cameras.main.getBounds(), 128);
+    }
+
+    gameOver(bomb)
+    {
+        this.isGameOver = true;
+
+        // Tampilkan game over text
+        this.gameOverText = this.add.text(
+            window.innerWidth / 2, 
+            window.innerHeight / 2 - 50, 
+            'GAME OVER!', 
+            {
+                fontSize: '48px',
+                fill: '#ff0000',
+                fontFamily: 'Arial',
+                stroke: '#000000',
+                strokeThickness: 4
+            }
+        ).setOrigin(0.5);
+
+        // Tombol play again
+        this.playAgainText = this.add.text(
+            window.innerWidth / 2,
+            window.innerHeight / 2 + 50,
+            'Main Lagi',
+            {
+                fontSize: '32px',
+                fill: '#00ff00',
+                fontFamily: 'Arial',
+                stroke: '#000000',
+                strokeThickness: 4
+            }
+        ).setOrigin(0.5).setInteractive();
+        
+        this.playAgainText.on('pointerdown', () => this.restartGame());
+
+        // Matikan interaksi objek
+        this.donuts.forEach(donut => donut.disableInteractive());
+        this.bombs.forEach(bomb => bomb.disableInteractive());
+
+        // Animasi bom
+        if (bomb) {
+            bomb.play('explode');
+            bomb.on('animationcomplete', () => bomb.destroy());
+        }
+    }
+
+    restartGame()
+    {
+        // Reset game state
+        this.isGameOver = false;
+        this.score = 0;
+        this.scoreText.setText('Score: 0');
+
+        // Hapus objek lama
+        this.donuts.forEach(donut => donut.destroy());
+        this.bombs.forEach(bomb => bomb.destroy());
+        this.gameOverText?.destroy();
+        this.playAgainText?.destroy();
+
+        // Buat objek baru
+        this.createDonuts();
+        this.createBombs();
+    }
+}
+
+const config = {
+    type: Phaser.AUTO,
+    width: window.innerWidth,
+    height: window.innerHeight,
+    backgroundColor: '#000000',
+    parent: 'phaser-example',
+    scene: Example,
+    scale: {
+        mode: Phaser.Scale.RESIZE,
+        autoCenter: Phaser.Scale.CENTER_BOTH
+    }
+};
+
+const game = new Phaser.Game(config);
+    </script>
+
+</body>
+</html>
